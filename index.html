@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+  .axis {
+    font: 10px sans-serif;
+  }
+
+  .axis path,
+  .axis line {
+    fill: none;
+    stroke: #000;
+    shape-rendering: crispEdges;
+  }
+
+  .tick {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  #chart {
+    position: fixed;
+    left: 0px;
+    right: 0px;
+    top: 0px;
+    bottom: 0px;
+  }
+</style>
+
+<body>
+  <script src="https://d3js.org/d3.v5.js" charset="utf-8"></script>
+  <script type="text/javascript"
+    src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-MML-AM_SVG">
+    </script>
+  
+  <div id="chart"></div>
+
+  <script>
+    var nodes = [
+      {x: 100, y: 100, id: "a"},
+      {x: 200, y: 200, id: "b"},
+    ];
+
+    var links = [
+      {source: "a", target: "b", offset: -50}
+    ]
+
+    var chartDiv = document.getElementById("chart");
+    var svg = d3.select(chartDiv)
+      .append("svg")
+      .attr("width", "100%")
+      .attr("height", "100%");
+
+    var simulation = d3.forceSimulation(nodes)
+      .force("charge", d3.forceManyBody().strength(-100))
+      .force("link", d3.forceLink(links).id((d) => d.id).distance(200))
+      .alphaTarget(0.1)
+      .on("tick", ticked);
+    
+    var main_g = svg.append("g");
+    var node = main_g.selectAll(".node_group")
+    var link = main_g.selectAll(".node_link")
+
+    svg.call(
+      d3.zoom() .filter(function() {
+        return (
+          d3.event.button === 1 ||
+          d3.event.deltaY);
+      })
+      .on("zoom", function() {
+        main_g.attr("transform", d3.event.transform);
+      })
+    );
+
+    svg.on("click", function() {
+      console.log("Adding node");
+      var coords = getMouseCoords(this);
+
+      var newNode = {
+        x: coords[0],
+        y: coords[1],
+        id: getUniqueNodeId(),
+        vx: 0.0,
+        vy: 0.0,
+      };
+      nodes.push(newNode);
+      restart()
+    });
+    restart();
+
+    function restart() {
+      node = main_g.selectAll(".node_group").data(nodes);
+      node.exit().remove();
+
+      var enter = node
+        .enter()
+        .append("g")
+        .attr("class", "node_group")
+        .attr("transform", (d) => "translate(" + (d.x) + "," + (d.y) + ")")
+      enter
+        .append("circle")
+        .attr("r", (d) => 20)
+        .on("mouseover", function(d) {d3.select(this).style("cursor", "move");})
+        .on("mouseout", function(d) {})
+        .on("click", function(d) {
+          console.log("clicked " + d.id);
+        })
+        .call(
+          d3.drag()
+            .on("drag", onDrag)
+        );
+      enter
+        .append("g")
+        .attr("class", "node_label")
+        .attr("transform", (d) => "translate(" + (20) + "," + (20) + ")")
+        .append("text")
+        .text(function(d) {
+          return "$" + d.id + "$";
+        })
+      node = node.merge(enter);
+
+      link = main_g.selectAll(".node_link").data(links);
+      link.exit().remove();
+
+      enter = link
+        .enter()
+        .append("circle")
+        .attr("class", "node_link")
+        .attr("r", 6)
+        .attr("cx", (d) => getLinkCenterX(d))
+        .attr("cy", (d) => getLinkCenterY(d))
+      
+      link = link.merge(enter);
+
+      MathJax.Hub.Queue(["Typeset", MathJax.Hub, svg.node()]);
+      
+      simulation.nodes(nodes);
+      simulation.force("link").links(links);
+      simulation.alpha(1).restart();
+    }
+
+    function getLinkCenterX(d) {
+      var avg_x = (d.source.x + d.target.x)/2;
+      var dir_x = d.target.x - d.source.x;
+      var dir_y = d.target.y - d.source.y;
+      var mag = Math.sqrt(dir_x**2 + dir_y**2)
+      var normal_x = dir_y/mag*d.offset;
+      return avg_x + normal_x;
+    }
+
+    function getLinkCenterY(d) {
+      var avg_y = (d.source.y + d.target.y)/2;
+      var dir_x = d.target.x - d.source.x;
+      var dir_y = d.target.y - d.source.y;
+      var mag = Math.sqrt(dir_x**2 + dir_y**2)
+      var normal_y = -dir_x/mag*d.offset;
+      return avg_y + normal_y;
+    }
+
+
+    function ticked() {
+      node
+        .attr("transform", (d) => {
+          return "translate(" + (d.x) + "," + (d.y) + ")"
+        })
+      link
+        .attr("cx", (d) => getLinkCenterX(d))
+        .attr("cy", (d) => getLinkCenterY(d));
+    }
+
+    function onDrag(d) {
+      var coords = getMouseCoords(svg.node());
+      d3.select(this.parentNode)
+        .attr("transform", (d) => "translate(" + (d.x = coords[0]) + "," + (d.y = coords[1]) + ")")
+      restart();
+    }
+
+    function transformMouseCoords(coords) {
+      var transform = d3.zoomTransform(svg.node())
+
+      var x = (coords[0] - transform.x)/transform.k;
+      var y = (coords[1] - transform.y)/transform.k;
+      return [x, y];
+    }
+
+    function getMouseCoords(context) {
+      var coords = d3.mouse(context);
+      return transformMouseCoords(coords);
+    }
+
+    function getUniqueNodeId(id_num=0) {
+      while(true) {
+        var id = idNumToString(id_num);
+        if(id && !getNodeById(id)) {
+          console.log("uniqueNodeId returning");
+          return id;
+        }
+        id_num++;
+      }
+    }
+
+    function idNumToString(id_num) {
+      var base_array = intToNewBaseArray(id_num, 26);
+      return base_array.map(x => String.fromCharCode(x + 97)).join("");
+    }
+
+    function intToNewBaseArray(num, base) {
+      if(num === 0) {
+        return [0];
+      }
+      var arr = [];
+      while(num > 0) {
+        var digit = num % base;
+        arr.unshift(digit);
+        num -= digit;
+        num /= base;
+      }
+      return arr;
+    }
+
+    function getNodeById(id) {
+      for (i = 0; i < nodes.length; i++) {
+        if (nodes[i].id == id) {
+          return nodes[i];
+        }
+      }
+    }
+
+
+    setTimeout(() => {
+      MathJax.Hub.Config({
+        tex2jax: {
+          inlineMath: [['$', '$'], ["\\(", "\\)"]],
+          processEscapes: true
+        },
+        SVG: {
+          useFontCache: false,
+        }
+      });
+
+      MathJax.Hub.Register.StartupHook("End", function () {
+        setInterval(() => {
+          svg.selectAll('.node_label').each(function () {
+            var self = d3.select(this),
+              g = self.select('text>span>svg');
+            if (!g.node()) {
+              return;
+            }
+
+            g.remove();
+            self.append(function () {
+              return g.node();
+            });
+          });
+        }, 1);
+      });
+      MathJax.Hub.Queue(["Typeset", MathJax.Hub, svg.node()]);
+    }, 1);
+  </script>
