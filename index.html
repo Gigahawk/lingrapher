@@ -40,12 +40,20 @@
 
   <script>
     var nodes = [
-      {x: 100, y: 100, id: "a"},
+      {x: 100, y: 200, id: "a"},
       {x: 200, y: 200, id: "b"},
+      {x: 300, y: 200, id: "c"},
+      {x: 100, fy: 400, id: "GND_{A1}"},
+      {x: 200, fy: 400, id: "GND_{A2}"},
+      {x: 400, fy: 400, id: "GND_{C1}"},
     ];
 
     var links = [
-      {source: "a", target: "b", offset: -50}
+      {source: "GND_{A1}", target: "a", offset: 50, type: "source_through"},
+      {source: "a", target: "GND_{A2}", offset: 50, type: "default"},
+      {source: "a", target: "b", offset: 10, type: "default"},
+      {source: "b", target: "c", offset: 10, type: "default"},
+      {source: "c", target: "GND_{C1}", offset: 50, type: "default"},
     ]
 
     var chartDiv = document.getElementById("chart");
@@ -56,13 +64,13 @@
 
     var simulation = d3.forceSimulation(nodes)
       .force("charge", d3.forceManyBody().strength(-100))
-      .force("link", d3.forceLink(links).id((d) => d.id).distance(200))
+      .force("link", d3.forceLink(links).id((d) => d.id).distance(200).strength(0.3))
       .alphaTarget(0.1)
       .on("tick", ticked);
     
     var main_g = svg.append("g");
     var node = main_g.selectAll(".node_group")
-    var link = main_g.selectAll(".node_link")
+    var link = main_g.selectAll(".node_link_group")
 
     svg.call(
       d3.zoom() .filter(function() {
@@ -89,20 +97,141 @@
       nodes.push(newNode);
       restart()
     });
+
+    drawGND();
+
     restart();
 
+    function drawGND() {
+      const gnd_y = 400;
+      const gnd_x = -100;
+      const gnd_width = 1000;
+      const gnd_depth = 20;
+      const gnd_spacing = 20;
+      const line_gen = d3.line();
+
+      var line = line_gen([
+        [gnd_x, gnd_y],
+        [gnd_x + gnd_width, gnd_y]
+      ]);
+
+      for(i = 0; i < gnd_width/gnd_spacing; i++) {
+        line += line_gen([
+          [gnd_x + i*gnd_spacing, gnd_y],
+          [gnd_x + i*gnd_spacing - gnd_spacing, gnd_y + gnd_depth]
+        ]);
+      }
+
+      main_g
+        .append("path")
+        .attr("class", "gnd")
+        .attr("d", line)
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("fill-opacity", 0)
+    }
+
     function restart() {
+      link = main_g.selectAll(".node_link_group").data(links);
+      link.exit().remove();
+
+      var enter = link
+        .enter()
+        .append("g")
+        .attr("class", "node_link_group")
+        .attr("transform", (d) => {
+          var frame = getLinkFrame(d);
+          var frame_x = frame[0];
+          var frame_y = frame[1];
+          var frame_theta = frame[2]/Math.PI*180;
+
+          return "translate(" + (frame_x) + "," + (frame_y) + ") rotate(" + (frame_theta) + ")";
+        })
+
+      var node_link_arc_group = enter
+        .append("g")
+        .attr("class", "node_link_arc_group")
+
+      node_link_arc_group
+        .append("path")
+        .attr("class", "node_link_arc1")
+        .attr("d", (d) => getLinkArc1(d))
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("fill-opacity", 0)
+        
+      node_link_arc_group
+        .append("path")
+        .attr("class", "node_link_arc2")
+        .attr("stroke-dasharray", (d) => d.type == "floating" ? 5 : 0)
+        .attr("d", (d) => getLinkArc2(d))
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("fill-opacity", 0)
+
+      var node_link_arrow_group = enter
+        .append("g")
+        .attr("class", "node_link_arrow_group")
+        .attr("transform", (d) => "translate(" + (d.offset) + ", 0)")
+      
+      node_link_arrow_group
+        .append("circle")
+        .attr("class", "node_link_arrow_back")
+        .attr("r", 20)
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("fill", "white")
+        .attr("opacity", (d) => d.type.includes("source") ? 1 : 0)
+
+      node_link_arrow_group
+        .append("path")
+        .attr("class", "node_link_arrow")
+        .attr("stroke-width", (d) => d.type.includes("source") ? 4 : 2)
+        .attr("stroke", (d) => d.type == "source_across" ? "red" : "black")
+        .attr("transform", (d) => d.type == "source_across" ? "scale(1, -1)" : "")
+        .attr("fill", "none")
+        .attr("d", (d) => getLinkArrow(d))
+      
+      var node_link_arrow_source_label = node_link_arrow_group
+        .append("g")
+        .attr("class", "node_link_arrow_source_label")
+        .attr("transform", (d) => "translate(" + (d.offset + 30) + ",0)")
+        .attr("opacity", (d) => d.type == "source_across" ? 1 : 0)
+      
+      node_link_arrow_source_label 
+        .append("g")
+        .attr("class", "node_label")
+        .attr("transform", (d) => "translate(0, 30)")
+        .append("text")
+        .text((d) => "$\\mathbf{+}$")
+
+      node_link_arrow_source_label 
+        .append("g")
+        .attr("class", "node_label")
+        .attr("transform", (d) => "translate(0, -40)")
+        .append("text")
+        .text((d) => "$\\mathbf{-}$")
+
+      
+
+      link = link.merge(enter);
+
       node = main_g.selectAll(".node_group").data(nodes);
       node.exit().remove();
 
-      var enter = node
+      enter = node
         .enter()
         .append("g")
         .attr("class", "node_group")
         .attr("transform", (d) => "translate(" + (d.x) + "," + (d.y) + ")")
+        .attr("opacity", (d) => d.id.includes("GND") ? 0 : 1)
+
       enter
         .append("circle")
-        .attr("r", (d) => 20)
+        .attr("r", (d) => 10)
+        .attr("fill", "white")
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
         .on("mouseover", function(d) {d3.select(this).style("cursor", "move");})
         .on("mouseout", function(d) {})
         .on("click", function(d) {
@@ -112,6 +241,7 @@
           d3.drag()
             .on("drag", onDrag)
         );
+
       enter
         .append("g")
         .attr("class", "node_label")
@@ -120,26 +250,84 @@
         .text(function(d) {
           return "$" + d.id + "$";
         })
+
       node = node.merge(enter);
 
-      link = main_g.selectAll(".node_link").data(links);
-      link.exit().remove();
-
-      enter = link
-        .enter()
-        .append("circle")
-        .attr("class", "node_link")
-        .attr("r", 6)
-        .attr("cx", (d) => getLinkCenterX(d))
-        .attr("cy", (d) => getLinkCenterY(d))
-      
-      link = link.merge(enter);
 
       MathJax.Hub.Queue(["Typeset", MathJax.Hub, svg.node()]);
       
       simulation.nodes(nodes);
       simulation.force("link").links(links);
       simulation.alpha(1).restart();
+    }
+
+    function getLinkArrow(d) {
+      const default_width = 10;
+      const source_width = 14;
+      const line_gen = d3.line();
+      var w = default_width;
+      switch(d.type) {
+        case "source_through":
+        case "source_across":
+          w = source_width;
+          return line_gen([
+            [0, -w],
+            [0, w*0.9],
+          ]) + line_gen([
+            [-w/2, w/5],
+            [0, w*0.9],
+            [w/2, w/5],
+          ])          
+          break;
+        default:
+          w = default_width;
+          return line_gen([
+            [-w/2, -w/2],
+            [0, 0],
+            [w/2, -w/2],
+          ]);
+      }
+    }
+
+    function getLinkArc1(d) {
+      var distance = getLinkDistance(d);
+      var rx = d.offset;
+      var ry = distance/2;
+      var sweep_flag = rx < 0 ? 0 : 1;
+
+      var arc = `M 0 ${-ry} A ${rx} ${ry} 0 0 ${sweep_flag} ${rx} 0`;
+      return arc;
+    }
+    
+    function getLinkArc2(d) {
+      var distance = getLinkDistance(d);
+      var rx = d.offset;
+      var ry = distance/2;
+      var sweep_flag = rx < 0 ? 0 : 1;
+
+      var arc = `M ${rx} 0 A ${rx} ${ry} 0 0 ${sweep_flag} 0 ${ry}`;
+      return arc;
+    }
+
+    function getLinkFrame(d) {
+      var avg_x = (d.source.x + d.target.x)/2;
+      var avg_y = (d.source.y + d.target.y)/2;
+      var dir_x = d.target.x - d.source.x;
+      var dir_y = d.target.y - d.source.y;
+      var theta = Math.atan(dir_y/dir_x);
+      if(dir_x > 0) {
+        theta += Math.PI*3/2;
+      } else {
+        theta -= Math.PI*3/2;
+      }
+      return [avg_x, avg_y, theta];
+    }
+
+    function getLinkDistance(d) {
+      var dir_x = d.target.x - d.source.x;
+      var dir_y = d.target.y - d.source.y;
+      var mag = Math.sqrt(dir_x**2 + dir_y**2)
+      return mag;
     }
 
     function getLinkCenterX(d) {
@@ -165,10 +353,22 @@
       node
         .attr("transform", (d) => {
           return "translate(" + (d.x) + "," + (d.y) + ")"
-        })
+        });
+
       link
-        .attr("cx", (d) => getLinkCenterX(d))
-        .attr("cy", (d) => getLinkCenterY(d));
+        .attr("transform", (d) => {
+          var frame = getLinkFrame(d);
+          var frame_x = frame[0];
+          var frame_y = frame[1];
+          var frame_theta = frame[2]/Math.PI*180;
+
+          return "translate(" + (frame_x) + "," + (frame_y) + ") rotate(" + (frame_theta) + ")";
+        })
+
+      link.selectAll(".node_link_arc1")
+        .attr("d", (d) => getLinkArc1(d))
+      link.selectAll(".node_link_arc2")
+        .attr("d", (d) => getLinkArc2(d))
     }
 
     function onDrag(d) {
@@ -259,4 +459,27 @@
       });
       MathJax.Hub.Queue(["Typeset", MathJax.Hub, svg.node()]);
     }, 1);
+
+  function saveSVG() {
+    var body = document.getElementsByTagName("body")[0];
+    var svg = body.getElementsByTagName("svg")[1];
+    var xml = (new XMLSerializer).serializeToString(svg);
+
+    console.log(xml);
+    download("output.svg", xml);
+  }
+
+  function download(filename, text) {
+    var element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+    element.setAttribute('download', filename);
+
+    element.style.display = 'none';
+    document.body.appendChild(element);
+
+    element.click();
+
+    document.body.removeChild(element);
+  }
+
   </script>
