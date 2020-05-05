@@ -43,6 +43,7 @@
       {x: 100, y: 200, id: "a"},
       {x: 200, y: 200, id: "b"},
       {x: 300, y: 200, id: "c"},
+      {x: 400, y: 200, id: "d"},
       {x: 100, fy: 400, id: "GND_{A1}"},
       {x: 200, fy: 400, id: "GND_{A2}"},
       {x: 400, fy: 400, id: "GND_{C1}"},
@@ -50,10 +51,10 @@
 
     var links = [
       {source: "GND_{A1}", target: "a", offset: 50, type: "source_through"},
-      {source: "a", target: "GND_{A2}", offset: 50, type: "default"},
+      {source: "a", target: "GND_{A2}", offset: 50, type: "floating"},
       {source: "a", target: "b", offset: 10, type: "default"},
       {source: "b", target: "c", offset: 10, type: "default"},
-      {source: "c", target: "GND_{C1}", offset: 50, type: "default"},
+      {source: "c", target: "d", offset: 50, type: "transformer"},
     ]
 
     var chartDiv = document.getElementById("chart");
@@ -64,8 +65,15 @@
 
     var simulation = d3.forceSimulation(nodes)
       .force("charge", d3.forceManyBody().strength(-100))
-      .force("link", d3.forceLink(links).id((d) => d.id).distance(200).strength(0.3))
-      .alphaTarget(0.1)
+      .force(
+        "link", 
+        d3.forceLink(links)
+          .id((d) => d.id)
+          .strength(0.5)
+          .distance((d) => d.type == "transformer" ? 75 : 200))
+      .force("transformers", forceTransformerLink(links))
+      // .alphaTarget(0.0)
+      // .alphaMin(0.5)
       .on("tick", ticked);
     
     var main_g = svg.append("g");
@@ -148,9 +156,42 @@
           return "translate(" + (frame_x) + "," + (frame_y) + ") rotate(" + (frame_theta) + ")";
         })
 
+      
+
       var node_link_arc_group = enter
         .append("g")
         .attr("class", "node_link_arc_group")
+        .attr("opacity", (d) => d.type == "transformer" ? 0 : 1)
+
+      var node_link_transformer_group = enter 
+        .append("g")
+        .attr("class", "node_link_transformer_group")
+        .attr("opacity", (d) => d.type == "transformer" ? 1 : 0)
+
+      var node_link_arrow_group = enter
+        .append("g")
+        .attr("class", "node_link_arrow_group")
+        .attr("transform", (d) => "translate(" + (d.offset) + ", 0)")
+        .attr("opacity", (d) => d.type == "transformer" ? 0 : 1)
+
+      var node_link_arrow_source_label = node_link_arrow_group
+        .append("g")
+        .attr("class", "node_link_arrow_source_label")
+        .attr("transform", (d) => "translate(" + (d.offset + 30) + ",0)")
+        .attr("opacity", (d) => d.type == "source_across" ? 1 : 0)
+
+      var node_link_transformer_static_group = node_link_transformer_group
+        .append("g")
+        .attr("class", "node_link_transformer_static_group")
+        .attr("transform", (d) => {
+          var frame = getLinkFrame(d);
+          var frame_y = frame[1];
+          var frame_theta = frame[2]/Math.PI*180;
+
+          var height = (400 - 20 - frame_y);
+
+          return "rotate(" + (-frame_theta) + ") translate(" + (0) + "," + (height) + ")";
+        })
 
       node_link_arc_group
         .append("path")
@@ -169,10 +210,6 @@
         .attr("stroke", "black")
         .attr("fill-opacity", 0)
 
-      var node_link_arrow_group = enter
-        .append("g")
-        .attr("class", "node_link_arrow_group")
-        .attr("transform", (d) => "translate(" + (d.offset) + ", 0)")
       
       node_link_arrow_group
         .append("circle")
@@ -192,11 +229,6 @@
         .attr("fill", "none")
         .attr("d", (d) => getLinkArrow(d))
       
-      var node_link_arrow_source_label = node_link_arrow_group
-        .append("g")
-        .attr("class", "node_link_arrow_source_label")
-        .attr("transform", (d) => "translate(" + (d.offset + 30) + ",0)")
-        .attr("opacity", (d) => d.type == "source_across" ? 1 : 0)
       
       node_link_arrow_source_label 
         .append("g")
@@ -212,7 +244,41 @@
         .append("text")
         .text((d) => "$\\mathbf{-}$")
 
-      
+
+      node_link_transformer_static_group
+        .append("path")
+        .attr("class", "node_link_transformer_bar")
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("fill", "none")
+        .attr("d", (d) => {
+          const line_gen = d3.line();
+          const width = Math.abs(d.target.x - d.source.x);
+          return line_gen([
+            [-width/2, 0],
+            [width/2, 0],
+            [0, 0],
+            [0, 20],
+          ])
+        })
+
+      node_link_transformer_static_group
+        .append("ellipse")
+        .attr("class", "node_link_transformer_ring")
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("fill", "none")
+        .attr("stroke-dasharray", 5)
+        .attr("rx", 20)
+        .attr("ry", 10)
+        .attr("cy", (d) => {
+          var frame = getLinkFrame(d);
+          var frame_y = frame[1];
+
+          var height = (400 - 20 - frame_y);
+          return -height/2;
+        })
+
 
       link = link.merge(enter);
 
@@ -240,6 +306,8 @@
         .call(
           d3.drag()
             .on("drag", onDrag)
+            .on("start", (d) => {d.dragging=true;})
+            .on("end", (d) => {d.dragging=false;})
         );
 
       enter
@@ -364,6 +432,40 @@
 
           return "translate(" + (frame_x) + "," + (frame_y) + ") rotate(" + (frame_theta) + ")";
         })
+      
+
+      link.selectAll(".node_link_transformer_static_group")
+        .attr("transform", (d) => {
+          var frame = getLinkFrame(d);
+          var frame_y = frame[1];
+          var frame_theta = frame[2]/Math.PI*180;
+
+          var height = (400 - 20 - frame_y);
+
+          return "rotate(" + (-frame_theta) + ") translate(" + (0) + "," + (height) + ")";
+        })
+
+      link.selectAll(".node_link_transformer_bar")
+        .attr("d", (d) => {
+          const line_gen = d3.line();
+          const width = Math.abs(d.target.x - d.source.x);
+          return line_gen([
+            [-width/2, 0],
+            [width/2, 0],
+            [0, 0],
+            [0, 20],
+          ])
+        })
+
+      link.selectAll(".node_link_transformer_ring")
+        .attr("cy", (d) => {
+          var frame = getLinkFrame(d);
+          var frame_y = frame[1];
+
+          var height = (400 - 20 - frame_y);
+          console.log(height);
+          return -height/2;
+        })
 
       link.selectAll(".node_link_arc1")
         .attr("d", (d) => getLinkArc1(d))
@@ -419,6 +521,19 @@
         num /= base;
       }
       return arr;
+    }
+
+    function forceTransformerLink(links) {
+      var out = function(alpha) {
+        links.forEach((l) => {
+          if(l.type == "transformer"){
+            var dist = l.target.y - l.source.y;
+            l.target.y -= alpha*dist*0.07;
+            l.source.y += alpha*dist*0.07;
+          }
+        });
+      }
+      return out;
     }
 
     function getNodeById(id) {
