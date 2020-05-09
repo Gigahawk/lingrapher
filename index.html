@@ -114,32 +114,39 @@
     restart();
 
     function drawGND() {
-      const gnd_y = 400;
-      const gnd_x = 0;
-      const gnd_width = 500;
-      const gnd_depth = 20;
-      const gnd_spacing = 20;
-      const line_gen = d3.line();
-
-      var line = line_gen([
-        [gnd_x, gnd_y],
-        [gnd_x + gnd_width, gnd_y]
-      ]);
-
-      for(i = 0; i < gnd_width/gnd_spacing; i++) {
-        line += line_gen([
-          [gnd_x + i*gnd_spacing, gnd_y],
-          [gnd_x + i*gnd_spacing - gnd_spacing, gnd_y + gnd_depth]
-        ]);
-      }
-
       main_g
         .append("path")
         .attr("class", "gnd")
-        .attr("d", line)
+        .attr("d", (d) => getGNDLine())
         .attr("stroke-width", 2)
         .attr("stroke", "black")
         .attr("fill-opacity", 0)
+    }
+
+    function getGNDLine() {
+      const x_range = getNodeXRange();
+      const padding = 50;
+      const gnd_y = 400;
+      const x_min = x_range[0] - padding
+      const x_max = x_range[1] + padding
+      const width = x_max - x_min;
+      const tick_depth = 20;
+      const tick_spacing = 20;
+      const ticks = Math.ceil(width/tick_spacing)
+      const line_gen = d3.line();
+
+      var line = line_gen([
+        [x_min, gnd_y],
+        [x_max, gnd_y]
+      ])
+
+      for(i = 0; i < ticks; i++) {
+        line += line_gen([
+          [x_min + i*tick_spacing, gnd_y],
+          [x_min + (i - 1)*tick_spacing, gnd_y + tick_depth]
+        ])
+      }
+      return line
     }
 
     function restart() {
@@ -563,6 +570,9 @@
         .attr("d", (d) => getLinkTransformerArc(d, true));
       link.selectAll(".node_link_transformer_arc_target")
         .attr("d", (d) => getLinkTransformerArc(d, false));
+
+      main_g.selectAll(".gnd")
+        .attr("d", (d) => getGNDLine())
     }
 
     function onDrag(d) {
@@ -634,6 +644,16 @@
           return nodes[i];
         }
       }
+    }
+
+    function getNodeXRange() {
+      var min = Number.MAX_VALUE;
+      var max = Number.MIN_VALUE;
+      for (i = 0; i < nodes.length; i++) {
+        min = Math.min(min, nodes[i].x);
+        max = Math.max(max, nodes[i].x);
+      }
+      return [min, max];
     }
 
 
