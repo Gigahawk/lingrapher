@@ -45,8 +45,9 @@
       {x: 300, y: 200, id: "c"},
       {x: 400, y: 200, id: "d"},
       {x: 100, fy: 400, id: "GND_{A1}"},
-      {x: 200, fy: 400, id: "GND_{A2}"},
-      {x: 400, fy: 400, id: "GND_{C1}"},
+      {x: 150, fy: 400, id: "GND_{A2}"},
+      {x: 400, fy: 400, id: "GND_{D1}"},
+      {x: 450, fy: 400, id: "GND_{D2}"},
     ];
 
     var links = [
@@ -55,6 +56,8 @@
       {source: "a", target: "b", offset: 10, type: "default"},
       {source: "b", target: "c", offset: 10, type: "default"},
       {source: "c", target: "d", offset: 50, type: "transformer"},
+      {source: "d", target: "GND_{D1}", offset: 25, type: "default"},
+      {source: "GND_{D2}", target: "d", offset: -50, type: "source_through"},
     ]
 
     var chartDiv = document.getElementById("chart");
@@ -64,12 +67,12 @@
       .attr("height", "100%");
 
     var simulation = d3.forceSimulation(nodes)
-      .force("charge", d3.forceManyBody().strength(-100))
+      .force("charge", d3.forceManyBody().strength(-0.01))
       .force(
         "link", 
         d3.forceLink(links)
           .id((d) => d.id)
-          .strength(0.5)
+          .strength(0)
           .distance((d) => d.type == "transformer" ? 75 : 200))
       .force("transformers", forceTransformerLink(links))
       // .alphaTarget(0.0)
@@ -91,20 +94,20 @@
       })
     );
 
-    svg.on("click", function() {
-      console.log("Adding node");
-      var coords = getMouseCoords(this);
+    // svg.on("click", function() {
+    //   console.log("Adding node");
+    //   var coords = getMouseCoords(this);
 
-      var newNode = {
-        x: coords[0],
-        y: coords[1],
-        id: getUniqueNodeId(),
-        vx: 0.0,
-        vy: 0.0,
-      };
-      nodes.push(newNode);
-      restart()
-    });
+    //   var newNode = {
+    //     x: coords[0],
+    //     y: coords[1],
+    //     id: getUniqueNodeId(),
+    //     vx: 0.0,
+    //     vy: 0.0,
+    //   };
+    //   nodes.push(newNode);
+    //   restart()
+    // });
 
     drawGND();
 
@@ -112,8 +115,8 @@
 
     function drawGND() {
       const gnd_y = 400;
-      const gnd_x = -100;
-      const gnd_width = 1000;
+      const gnd_x = 0;
+      const gnd_width = 500;
       const gnd_depth = 20;
       const gnd_spacing = 20;
       const line_gen = d3.line();
@@ -262,7 +265,18 @@
           ])
         })
 
-      node_link_transformer_static_group
+      node_link_transformer_center_group = node_link_transformer_static_group
+        .append("g")
+        .attr("class", "node_link_transformer_center_group")
+        .attr("transform", (d) => {
+          var frame = getLinkFrame(d);
+          var frame_y = frame[1];
+          var height = (400 - 20 - frame_y);
+
+          return `translate(0,${-height/2})`;
+        })
+
+      node_link_transformer_center_group
         .append("ellipse")
         .attr("class", "node_link_transformer_ring")
         .attr("stroke-width", 2)
@@ -271,13 +285,40 @@
         .attr("stroke-dasharray", 5)
         .attr("rx", 20)
         .attr("ry", 10)
-        .attr("cy", (d) => {
-          var frame = getLinkFrame(d);
-          var frame_y = frame[1];
 
-          var height = (400 - 20 - frame_y);
-          return -height/2;
-        })
+      node_link_transformer_center_group
+        .append("path")
+        .attr("class", "node_link_transformer_arrow")
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("transform", "translate(-7, 0)")
+        .attr("fill", "none")
+        .attr("d", (d) => getLinkArrow(d))
+
+      node_link_transformer_center_group
+        .append("path")
+        .attr("class", "node_link_transformer_arrow")
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("transform", "translate(7, 0)")
+        .attr("fill", "none")
+        .attr("d", (d) => getLinkArrow(d))
+
+      node_link_transformer_center_group
+        .append("path")
+        .attr("class", "node_link_transformer_arc_source")
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("d", (d) => getLinkTransformerArc(d, true))
+        .attr("fill-opacity", 0)
+
+      node_link_transformer_center_group
+        .append("path")
+        .attr("class", "node_link_transformer_arc_target")
+        .attr("stroke-width", 2)
+        .attr("stroke", "black")
+        .attr("d", (d) => getLinkTransformerArc(d, false))
+        .attr("fill-opacity", 0)
 
 
       link = link.merge(enter);
@@ -377,6 +418,54 @@
       return arc;
     }
 
+    function getLinkTransformerArc(d, source) {
+      var node, node_left, node_right, node_top, node_bottom;
+      var node_height, avg_height;
+      var rx, ry;
+      var arc_x, middle_x
+      var start_y, end_y;
+      var sweep_flag;
+      if(d.source.x < d.target.x) {
+        node_left = d.source;
+        node_right = d.target;
+      } else {
+        node_left = d.target
+        node_right = d.source
+      }
+      if(d.source.y < d.target.y) {
+        node_top = d.source;
+        node_bottom = d.target;
+      } else {
+        node_top = d.target
+        node_bottom = d.source
+      }
+      if(source) {
+        node = d.source
+      } else {
+        node = d.target
+      }
+      node_height = 400 - 20 - node.y;
+      avg_height = 400 - 20 - (node_top.y + node_bottom.y)/2;
+      width = node_right.x - node_left.x;
+      rx = width/2 - 7;
+      center_ry = avg_height/2;
+      node_ry = node_height - center_ry;
+      if(node == node_left) {
+        sweep_flag = 0;
+        arc_x = -width/2;
+        middle_x = -7
+      } else {
+        sweep_flag = 1;
+        arc_x = width/2;
+        middle_x = 7
+      }
+      start_y = center_ry;
+      end_y = -node_ry;
+
+      var arc = `M ${arc_x} ${start_y} A ${rx} ${center_ry} 0 0 ${sweep_flag} ${middle_x} ${0} A ${rx} ${node_ry} 0 0 ${sweep_flag} ${arc_x} ${end_y}`;
+      return arc;
+    }
+
     function getLinkFrame(d) {
       var avg_x = (d.source.x + d.target.x)/2;
       var avg_y = (d.source.y + d.target.y)/2;
@@ -457,20 +546,23 @@
           ])
         })
 
-      link.selectAll(".node_link_transformer_ring")
-        .attr("cy", (d) => {
+      link.selectAll(".node_link_transformer_center_group")
+        .attr("transform", (d) => {
           var frame = getLinkFrame(d);
           var frame_y = frame[1];
-
           var height = (400 - 20 - frame_y);
-          console.log(height);
-          return -height/2;
+
+          return `translate(0,${-height/2})`;
         })
 
       link.selectAll(".node_link_arc1")
         .attr("d", (d) => getLinkArc1(d))
       link.selectAll(".node_link_arc2")
         .attr("d", (d) => getLinkArc2(d))
+      link.selectAll(".node_link_transformer_arc_source")
+        .attr("d", (d) => getLinkTransformerArc(d, true));
+      link.selectAll(".node_link_transformer_arc_target")
+        .attr("d", (d) => getLinkTransformerArc(d, false));
     }
 
     function onDrag(d) {
@@ -582,6 +674,15 @@
 
     console.log(xml);
     download("output.svg", xml);
+  }
+
+  function saveJSON() {
+    var output = {
+      nodes: nodes,
+      links: links
+    }
+
+    download("output.json", JSON.stringify(output, null, 2));
   }
 
   function download(filename, text) {
